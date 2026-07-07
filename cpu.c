@@ -32,6 +32,21 @@ static inline void set_zf(uint8_t val, CPU* const c){
 	c->zf = (val == 0) ? 1: 0; 	
 }
 
+static inline void push_stack(uint8_t high, uint8_t low, CPU* const c){
+	c->sp--;
+	mem_write(c->sp, high, c);
+	c->sp--;
+	mem_write(c->sp, low, c);
+}
+
+static inline uint16_t pop_stack(CPU* const c){
+	uint8_t low = c->mem[c->sp];
+	c->sp++;
+	uint8_t high = c->mem[c->sp];
+	c->sp++;
+	return high << 8 | low;
+}
+
 void cpu_step(CPU* const c){
 	uint8_t opcode = fetch8(c);
 
@@ -49,16 +64,34 @@ void cpu_step(CPU* const c){
 		// jmp
 		case 0xc3: c->pc = fetch16(c); break;	
 
-		case 0x20:
+		case 0x20:	// jmp cc relative
 			   int8_t offset = (int8_t)fetch8(c);
 			   if(!c->zf){
 			  	c->pc += offset; 
 			   }
 			   break;
 
+		case 0x18: {	// jmp relative 
+				   int8_t offset = (int8_t)fetch8(c);
+				   c->pc += offset;
+				   break;
+		}
+
+		case 0xcd:	// call u16
+			uint16_t addr = fetch16(c);
+			push_stack(c->pc >> 8, c->pc&0xff, c);
+			c->pc = addr;
+			break;
+
+		case 0xc9: 	// ret
+			c->pc = pop_stack(c);
+			break;
+
 		// load
 		case 0x47: c->b = c->a; break;
 		case 0x78: c->a = c->b; break;
+		case 0x7d: c->a = c->l; break;
+		case 0x7c: c->a = c->h; break;
 		case 0x21: c->l = fetch8(c); c->h = fetch8(c); break; 
 		case 0x11: c->e = fetch8(c); c->d = fetch8(c); break;
 		case 0x01: c->c = fetch8(c); c->b = fetch8(c); break;
@@ -75,8 +108,10 @@ void cpu_step(CPU* const c){
 			   c->l = hl & 0xff;
 			   break;
 
+		// write operations
 		case 0x12: mem_write(get_de(c), c->a, c); break;
 		case 0xea: mem_write(fetch16(c), c->a, c); break; 
+		case 0x77: mem_write(get_hl(c), c->a, c); break;
 
 		case 0xe0: mem_write(0xff00 + fetch8(c), c->a, c); break;
 

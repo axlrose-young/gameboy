@@ -14,6 +14,7 @@ static inline uint16_t fetch16(CPU* const c){
 
 static inline void mem_write(uint16_t addr, uint8_t val, CPU* const c){
 	if(addr == 0xff01){
+		puts("its in ff01");
 		fputc(val, stdout);
 		fflush(stdout);	
 	}	
@@ -76,6 +77,7 @@ static inline void bit_or(uint8_t val, CPU* const c){
 
 static inline void bit_cmp(uint8_t val, CPU* const c){
 	uint8_t result = c->a - val;
+
 	c->hf = ((c->a&0x0f) < (val&0x0f));
 	c->cf = (c->a < val);
 	set_zf(result,c);
@@ -90,12 +92,25 @@ static inline void bit_and(uint8_t val, CPU* const c){
 	c->hf = 1;
 }
 
+static inline void bit_xor(uint8_t val, CPU* const c){
+	c->a ^= val;
+	set_zf(c->a,c);
+	c->nf = c->hf = c->cf = 0;
+}
+
 static inline uint8_t inc(uint8_t val, CPU* const c){
 	c->hf = ((val&0x0f) + (0x01) > 0x0f);
 	val++;
 	set_zf(val, c);
 	c->nf = 0;
 	return val;
+}
+
+static inline void inc_rp(uint8_t* hi, uint8_t* lo){	
+	uint16_t val = *hi << 8 | *lo;
+	val++;
+	*hi = val >> 8;
+	*lo = val & 0xff;	
 }
 
 static inline uint8_t dec(uint8_t val, CPU* const c){
@@ -106,10 +121,38 @@ static inline uint8_t dec(uint8_t val, CPU* const c){
 	return val;
 }
 
+static inline void dec_rp(uint8_t* hi, uint8_t* lo){
+	uint16_t val = *hi << 8 | *lo;
+	val--;
+	*hi = val >> 8;
+	*lo = val & 0xff;	
+}
+
+static inline void add(uint8_t val, CPU* const c){
+	c->hf = ((c->a&0x0f) + (val&0x0f) > 0x0f);
+	uint16_t result = (uint16_t)c->a + val;	
+	c->cf = (result > 0xff);
+
+	c->a += val;
+	set_zf(c->a,c);
+	c->nf = 0;
+}
+
+static inline void sub(uint8_t val, CPU* const c){
+	uint8_t result = c->a - val;
+
+	c->hf = ((c->a&0x0f) < (val&0x0f));
+	c->cf = (c->a < val);
+	set_zf(result,c);
+	c->nf = 0;
+
+	c->a = result;
+}
+
 void cpu_step(CPU* const c){
 	uint8_t opcode = fetch8(c);
 
-	printf("opcode: %04X, pc: %04X\n",opcode,c->pc);	
+	//printf("opcode: %04X, pc: %04X\n",opcode,c->pc);	
 
 	if(opcode == 0xcb){
 		printf("this is cb prefix\n");	
@@ -123,19 +166,22 @@ void cpu_step(CPU* const c){
 		// jmp
 		case 0xc3: c->pc = fetch16(c); break;	
 
-		case 0x20:	// jmp cc relative
-			   int8_t offset = (int8_t)fetch8(c);
-			   if(!c->zf){
-			  	c->pc += offset; 
-			   }
-			   break;
+		case 0x20:{
+				int8_t offset = (int8_t)fetch8(c);
+				if(!c->zf) c->pc += offset; 
+				break; 
+			  }
 
 		case 0x28:{
-				   int8_t offset = (int8_t)fetch8(c); 
-				   if(c->zf){
-				   	c->pc += offset;	
-				   }
-				   break;
+			 	int8_t offset = (int8_t)fetch8(c); 
+				if(c->zf) c->pc += offset;	
+				break;
+			  }
+
+		case 0x30:{
+			 	int8_t offset = (int8_t)fetch8(c);
+			        if(!c->cf) c->pc += offset;
+			   	break;		
 			  }
 
 		case 0x18:{	// jmp relative 
@@ -179,6 +225,7 @@ void cpu_step(CPU* const c){
 
 		case 0xfa: c->a = c->mem[fetch16(c)]; break;
 		case 0xf0: c->a = c->mem[(fetch8(c) + 0xff00)]; break;
+		case 0x1a: c->a = c->mem[get_de(c)]; break;
 
 		case 0x2a: 
 			   uint16_t hl = get_hl(c);
@@ -190,8 +237,16 @@ void cpu_step(CPU* const c){
 
 		// write operations
 		case 0x12: mem_write(get_de(c), c->a, c); break;
-		case 0xea: mem_write(fetch16(c), c->a, c); break; 
 		case 0x77: mem_write(get_hl(c), c->a, c); break;
+		case 0xea: mem_write(fetch16(c), c->a, c); break; 
+
+		case 0x22: mem_write(get_hl(c), c->a, c); 			// ld hl++,a
+			   inc_rp(&c->h, &c->l); 
+			   break; 
+
+		case 0x32: mem_write(get_hl(c), c->a, c);			// ld hl--,a
+			   dec_rp(&c->h, &c->l); 
+			   break;
 
 		case 0xe0: mem_write(0xff00 + fetch8(c), c->a, c); break;
 
@@ -220,10 +275,13 @@ void cpu_step(CPU* const c){
 
 		// alu
 		case 0xb1: bit_or(c->c, c); break;				// or a,c 
+		case 0xb7: bit_or(c->a, c); break;				// or a,a
+	
+		case 0xa9: bit_xor(c->c, c); break; 				// xor a,c
 
 		case 0xfe: bit_cmp(fetch8(c), c); break;			// cmp a,u8
 
-		case 0xe6: bit_and(fetch8(c), c); break;			// amd a,u8
+		case 0xe6: bit_and(fetch8(c), c); break;			// and a,u8
 			  
 		case 0x1c: c->e = inc(c->e, c); break;				// inc e
 		case 0x14: c->d = inc(c->d, c); break;				// inc d
@@ -233,16 +291,13 @@ void cpu_step(CPU* const c){
 		case 0x0d: c->c = dec(c->c, c); break;				// dec c
 		case 0x05: c->b = dec(c->b, c); break; 				// dec b 
 
-		case 0x23:{ 	// inc r16 (does not modify flags)
-				uint16_t hl = get_hl(c) + 1;
-				c->h = hl >> 8; c->l = hl & 0xff;
-				break;	
-			  }
-		case 0x03:{
-				uint16_t bc = get_bc(c) + 1;		
-				c->b = bc >> 8; c->c = bc & 0xff;
-				break;
-			  }
+		case 0x23: inc_rp(&c->h, &c->l); break;				// inc hl
+		case 0x13: inc_rp(&c->d, &c->e); break;				// inc de
+		case 0x03: inc_rp(&c->b, &c->c); break;				// inc bc
+
+		case 0xc6: add(fetch8(c), c); break;				// add a,u8
+
+		case 0xd6: sub(fetch8(c), c); break;				// sub u8
 
 		// interupts
 		case 0xf3: c->IME = 0; break;

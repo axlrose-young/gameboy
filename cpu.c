@@ -170,15 +170,29 @@ static inline void sub(uint8_t val, CPU* const c){
 	c->a = result;
 }
 
+// this is cb prefixed helpers
+void cb_step(uint8_t cb_opcode, CPU* const c);
+
+static inline void cb_rr(uint8_t* val, CPU* const c){
+	uint8_t cy_in = (uint8_t)c->cf;
+
+	c->cf = *val & 0x01;
+	*val >>= 1;
+	*val |= (cy_in << 7);
+
+	c->zf = (*val == 0);
+	c->nf = c->hf = 0;
+}
+
 void cpu_step(CPU* const c){
 	uint8_t opcode = fetch8(c);
 
 //	printf("opcode: %04X, pc: %04X\n",opcode,c->pc);	
 
 	if(opcode == 0xcb){
-		printf("this is cb prefix\n");	
 		uint8_t cb_opcode = fetch8(c);
-		c->is_running = 0;
+		cb_step(cb_opcode,c);
+		return;
 	}
 
 	switch(opcode){
@@ -233,11 +247,17 @@ void cpu_step(CPU* const c){
 
 
 		// load
-		case 0x47: c->b = c->a; break;
-		case 0x78: c->a = c->b; break;
+		case 0x78: c->a = c->b; break; 
+		case 0x79: c->a = c->c; break;						// ld a,c
+		case 0x7a: c->a = c->d; break;						// ld a,d
 		case 0x7b: c->a = c->e; break;						// ld a,e
 		case 0x7d: c->a = c->l; break;
 		case 0x7c: c->a = c->h; break;
+		case 0x47: c->b = c->a; break;
+		case 0x4f: c->c = c->l; break;						// ld c,a
+		case 0x57: c->d = c->a; break;						// ld d,a
+		case 0x5f: c->e = c->a; break;						// ld e,a
+		case 0x5d: c->e = c->l; break;						// ld e,l
 		case 0x6f: c->l = c->a; break;						// ld l,a
 		case 0x21: c->l = fetch8(c); c->h = fetch8(c); break; 
 		case 0x11: c->e = fetch8(c); c->d = fetch8(c); break;
@@ -248,10 +268,15 @@ void cpu_step(CPU* const c){
 		case 0x3e: c->a = fetch8(c); break;
 		case 0x06: c->b = fetch8(c); break;
 		case 0x26: c->h = fetch8(c); break;					// ld h,u8
+		case 0x2e: c->l = fetch8(c); break;					// ld l,u8
 
 		case 0xfa: c->a = c->mem[fetch16(c)]; break;
 		case 0xf0: c->a = c->mem[(fetch8(c) + 0xff00)]; break;
+
 		case 0x1a: c->a = c->mem[get_de(c)]; break;
+		case 0x56: c->e = c->mem[get_hl(c)]; break;				// ld d,hl
+		case 0x5e: c->e = c->mem[get_hl(c)]; break;				// ld e,hl
+		case 0x6e: c->l = c->mem[get_hl(c)]; break;				// ld l,hl
 
 		case 0x2a: 
 			   uint16_t hl = get_hl(c);
@@ -263,8 +288,10 @@ void cpu_step(CPU* const c){
 
 		// write operations
 		case 0x12: mem_write(get_de(c), c->a, c); break;
+		case 0x71: mem_write(get_hl(c), c->c, c); break;		// ld hl,c
+		case 0x72: mem_write(get_hl(c), c->d, c); break;		// ld hl,d
+		case 0x73: mem_write(get_hl(c), c->e, c); break;		// ld hl,e
 		case 0x77: mem_write(get_hl(c), c->a, c); break;
-		case 0x6e: mem_write(get_hl(c), c->l, c); break;		// ld l,hl
 		case 0xea: mem_write(fetch16(c), c->a, c); break; 
 
 		case 0x22: mem_write(get_hl(c), c->a, c); 			// ld hl++,a
@@ -313,6 +340,8 @@ void cpu_step(CPU* const c){
 		case 0xb6: bit_or(c->mem[get_hl(c)], c); break;			// or a,hl
 	
 		case 0xa9: bit_xor(c->c, c); break; 				// xor a,c
+		case 0xaf: bit_xor(c->a, c); break;				// xor a,a
+		case 0xee: bit_xor(fetch8(c),c); break;				// xor a,u8
 
 		case 0xfe: bit_cmp(fetch8(c), c); break;			// cmp a,u8
 
@@ -326,6 +355,7 @@ void cpu_step(CPU* const c){
 		case 0x0d: c->c = dec(c->c, c); break;				// dec c
 		case 0x05: c->b = dec(c->b, c); break; 				// dec b 
 		case 0x1d: c->e = dec(c->e, c); break; 				// dec e
+		case 0x25: c->h = dec(c->h, c); break;				// dec h
 		case 0x2d: c->l = dec(c->l, c); break;				// dec l
 		case 0x3d: c->a = dec(c->a, c); break;				// dec a
 
@@ -346,7 +376,7 @@ void cpu_step(CPU* const c){
 
 		// rotates
 		case 0x1f:							// rra
-			   bool cy_in = c->cf;
+			   uint8_t cy_in = (uint8_t)c->cf;
 			   c->cf = c->a & 0x01;
 			   c->a >>= 1;
 			   c->a |= (cy_in << 7); 
@@ -359,5 +389,18 @@ void cpu_step(CPU* const c){
 			   break;
 	}
 } 
+
+void cb_step(uint8_t cb_opcode, CPU* const c){
+	switch(cb_opcode){
+		case 0x19: cb_rr(&c->c, c); break;				// rr c
+		case 0x1a: cb_rr(&c->d, c); break;				// rr d
+		case 0x1b: cb_rr(&c->e, c); break;				// rr e
+
+		default:
+			   printf("unimplemented cb opcode: %04X\n",cb_opcode);
+			   c->is_running = 0;
+			   break;
+	}
+}
 
 

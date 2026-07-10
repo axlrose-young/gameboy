@@ -14,7 +14,6 @@ static inline uint16_t fetch16(CPU* const c){
 
 static inline void mem_write(uint16_t addr, uint8_t val, CPU* const c){
 	if(addr == 0xff01){
-		puts("its in ff01");
 		fputc(val, stdout);
 		fflush(stdout);	
 	}	
@@ -138,6 +137,28 @@ static inline void add(uint8_t val, CPU* const c){
 	c->nf = 0;
 }
 
+static inline void add16(uint16_t val, CPU* const c){
+	uint16_t result = get_hl(c) + val;
+
+	c->cf = (result < val);	// result wraps around 
+	c->hf = ((result&0xff) + (val&0xff) > 0xff);
+	c->nf = 0;
+
+	c->h = result >> 8;
+	c->l = result & 0xff;
+}
+
+static inline void adc(uint8_t val, CPU* const c){
+	uint16_t result = c->a + c->cf + val;
+
+	c->hf = ((c->a&0x0f) + c->cf + (val&0x0f) > 0x0f);  
+	c->cf = (result > 0xff);
+	set_zf(result&0xff, c);
+	c->nf = 0;
+
+	c->a = result & 0xff;
+}
+
 static inline void sub(uint8_t val, CPU* const c){
 	uint8_t result = c->a - val;
 
@@ -152,7 +173,7 @@ static inline void sub(uint8_t val, CPU* const c){
 void cpu_step(CPU* const c){
 	uint8_t opcode = fetch8(c);
 
-	//printf("opcode: %04X, pc: %04X\n",opcode,c->pc);	
+//	printf("opcode: %04X, pc: %04X\n",opcode,c->pc);	
 
 	if(opcode == 0xcb){
 		printf("this is cb prefix\n");	
@@ -165,6 +186,7 @@ void cpu_step(CPU* const c){
 		
 		// jmp
 		case 0xc3: c->pc = fetch16(c); break;	
+		case 0xe9: c->pc = get_hl(c); break;					// jmp hl
 
 		case 0x20:{
 				int8_t offset = (int8_t)fetch8(c);
@@ -205,15 +227,18 @@ void cpu_step(CPU* const c){
 				break;
 			  }
 
-		case 0xc9: 	// ret
-			c->pc = pop_stack(c);
-			break;
+		case 0xc9: c->pc = pop_stack(c); break;					// ret
+		case 0xd0: c->pc = (!c->cf) ? pop_stack(c) : c->pc; break;		// ret nc
+		case 0xc8: c->pc = (c->zf) ? pop_stack(c) : c->pc; break;		// ret z
+
 
 		// load
 		case 0x47: c->b = c->a; break;
 		case 0x78: c->a = c->b; break;
+		case 0x7b: c->a = c->e; break;						// ld a,e
 		case 0x7d: c->a = c->l; break;
 		case 0x7c: c->a = c->h; break;
+		case 0x6f: c->l = c->a; break;						// ld l,a
 		case 0x21: c->l = fetch8(c); c->h = fetch8(c); break; 
 		case 0x11: c->e = fetch8(c); c->d = fetch8(c); break;
 		case 0x01: c->c = fetch8(c); c->b = fetch8(c); break;
@@ -222,6 +247,7 @@ void cpu_step(CPU* const c){
 		case 0x0e: c->c = fetch8(c); break;
 		case 0x3e: c->a = fetch8(c); break;
 		case 0x06: c->b = fetch8(c); break;
+		case 0x26: c->h = fetch8(c); break;					// ld h,u8
 
 		case 0xfa: c->a = c->mem[fetch16(c)]; break;
 		case 0xf0: c->a = c->mem[(fetch8(c) + 0xff00)]; break;
@@ -238,6 +264,7 @@ void cpu_step(CPU* const c){
 		// write operations
 		case 0x12: mem_write(get_de(c), c->a, c); break;
 		case 0x77: mem_write(get_hl(c), c->a, c); break;
+		case 0x6e: mem_write(get_hl(c), c->l, c); break;		// ld l,hl
 		case 0xea: mem_write(fetch16(c), c->a, c); break; 
 
 		case 0x22: mem_write(get_hl(c), c->a, c); 			// ld hl++,a
@@ -249,9 +276,11 @@ void cpu_step(CPU* const c){
 			   break;
 
 		case 0xe0: mem_write(0xff00 + fetch8(c), c->a, c); break;
+		case 0x35: mem_write(get_hl(c), dec(c->mem[get_hl(c)],c), c); break;  	// dec hl 
 
 		// push
 		case 0xe5: push_stack(c->h, c->l, c); break;
+		case 0xd5: push_stack(c->d, c->e, c); break;			// push de
 		case 0xc5: push_stack(c->b, c->c, c); break;
 		case 0xf5: push_stack(c->a, format_flags(c), c); break;
 
@@ -260,6 +289,11 @@ void cpu_step(CPU* const c){
 				uint16_t hl = pop_stack(c); 
 				c->h = hl >> 8; c->l = hl & 0xff; 
 				break;
+			  }
+		case 0xd1:{
+			 	uint16_t de = pop_stack(c);
+			        c->d = de >> 8; c->e = de & 0xff;
+				break;	
 			  }
 		case 0xc1:{
 			 	uint16_t bc = pop_stack(c);
@@ -276,6 +310,7 @@ void cpu_step(CPU* const c){
 		// alu
 		case 0xb1: bit_or(c->c, c); break;				// or a,c 
 		case 0xb7: bit_or(c->a, c); break;				// or a,a
+		case 0xb6: bit_or(c->mem[get_hl(c)], c); break;			// or a,hl
 	
 		case 0xa9: bit_xor(c->c, c); break; 				// xor a,c
 
@@ -290,6 +325,9 @@ void cpu_step(CPU* const c){
 
 		case 0x0d: c->c = dec(c->c, c); break;				// dec c
 		case 0x05: c->b = dec(c->b, c); break; 				// dec b 
+		case 0x1d: c->e = dec(c->e, c); break; 				// dec e
+		case 0x2d: c->l = dec(c->l, c); break;				// dec l
+		case 0x3d: c->a = dec(c->a, c); break;				// dec a
 
 		case 0x23: inc_rp(&c->h, &c->l); break;				// inc hl
 		case 0x13: inc_rp(&c->d, &c->e); break;				// inc de
@@ -297,10 +335,23 @@ void cpu_step(CPU* const c){
 
 		case 0xc6: add(fetch8(c), c); break;				// add a,u8
 
+		case 0xce: adc(fetch8(c), c); break;  				// adc a,u8
+
+		case 0x29: add16(get_hl(c), c); break;				// add hl,hl
+
 		case 0xd6: sub(fetch8(c), c); break;				// sub u8
 
 		// interupts
 		case 0xf3: c->IME = 0; break;
+
+		// rotates
+		case 0x1f:							// rra
+			   bool cy_in = c->cf;
+			   c->cf = c->a & 0x01;
+			   c->a >>= 1;
+			   c->a |= (cy_in << 7); 
+			   c->nf = c->hf = c->zf = 0;
+			   break;
 
 		default:
 			   printf("unimplmented opcode: %04X\n",opcode);

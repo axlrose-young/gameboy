@@ -281,21 +281,55 @@ void cpu_step(CPU* const c){
 
 
 		// load
+		case 0x7f: c->a = c->a; break;						// ld a,a
 		case 0x78: c->a = c->b; break; 
 		case 0x79: c->a = c->c; break;						// ld a,c
 		case 0x7a: c->a = c->d; break;						// ld a,d
 		case 0x7b: c->a = c->e; break;						// ld a,e
 		case 0x7d: c->a = c->l; break;
 		case 0x7c: c->a = c->h; break;
-		case 0x47: c->b = c->a; break;
+		case 0x47: c->b = c->a; break;						// ld b,a
+		case 0x40: c->b = c->b; break;						// ld b,b
+		case 0x41: c->b = c->c; break;						// ld b,c
+		case 0x42: c->b = c->d; break;						// ld b,d
+		case 0x43: c->b = c->e; break;						// ld b,e
+		case 0x44: c->b = c->h; break;						// ld b,h
+		case 0x45: c->b = c->l; break;						// ld b,l
 		case 0x4f: c->c = c->a; break;						// ld c,a
+		case 0x48: c->c = c->b; break;						// ld c,b
+		case 0x49: c->c = c->c; break;						// ld c,c
+		case 0x4a: c->c = c->d; break;						// ld c,d
+		case 0x4b: c->c = c->e; break;						// ld c,e
+		case 0x4c: c->c = c->h; break;						// ld c,h
+		case 0x4d: c->c = c->l; break;						// ld c,l
 		case 0x57: c->d = c->a; break;						// ld d,a
+		case 0x50: c->d = c->b; break;						// ld d,b
+		case 0x51: c->d = c->c; break;						// ld d,c
+		case 0x52: c->d = c->d; break;						// ld d,d
+		case 0x53: c->d = c->e; break;						// ld d,e
+		case 0x54: c->d = c->h; break;						// ld d,h
+		case 0x55: c->d = c->l; break;						// ld d,l
 		case 0x5f: c->e = c->a; break;						// ld e,a
+		case 0x58: c->e = c->b; break;						// ld e,b
+		case 0x59: c->e = c->c; break;						// ld e,c
+		case 0x5a: c->e = c->d; break;						// ld e,d
+		case 0x5b: c->e = c->e; break;						// ld e,e
+		case 0x5c: c->e = c->h; break;						// ld e,h
 		case 0x5d: c->e = c->l; break;						// ld e,l
 		case 0x67: c->h = c->a; break;						// ld h,a
+		case 0x60: c->h = c->b; break;						// ld h,b
+		case 0x61: c->h = c->c; break;						// ld h,c
 		case 0x62: c->h = c->d; break;						// ld h,d
+		case 0x63: c->h = c->e; break;						// ld h,e
+		case 0x64: c->h = c->h; break;						// ld h,h
+		case 0x65: c->h = c->l; break;						// ld h,l
 		case 0x6f: c->l = c->a; break;						// ld l,a
+		case 0x68: c->l = c->b; break;						// ld l,b
+		case 0x69: c->l = c->c; break;						// ld l,c
+		case 0x6a: c->l = c->d; break;						// ld l,d
 		case 0x6b: c->l = c->e; break;						// ld l,e 
+		case 0x6c: c->l = c->h; break;						// ld l,h 
+		case 0x6d: c->l = c->l; break;						// ld l,l 
 		case 0x21: c->l = fetch8(c); c->h = fetch8(c); break; 
 		case 0x11: c->e = fetch8(c); c->d = fetch8(c); break;
 		case 0x01: c->c = fetch8(c); c->b = fetch8(c); break;
@@ -346,11 +380,14 @@ void cpu_step(CPU* const c){
 
 		// write operations
 		case 0x12: mem_write(get_de(c), c->a, c); break;		// ld de,a
+
+		case 0x77: mem_write(get_hl(c), c->a, c); break;		// ld hl,a
 		case 0x70: mem_write(get_hl(c), c->b, c); break;		// ld hl,b
 		case 0x71: mem_write(get_hl(c), c->c, c); break;		// ld hl,c
 		case 0x72: mem_write(get_hl(c), c->d, c); break;		// ld hl,d
 		case 0x73: mem_write(get_hl(c), c->e, c); break;		// ld hl,e
-		case 0x77: mem_write(get_hl(c), c->a, c); break;		// ld hl,a
+		case 0x74: mem_write(get_hl(c), c->h, c); break;		// ld hl,h
+		case 0x75: mem_write(get_hl(c), c->l, c); break;		// ld hl,l
 		case 0x36: mem_write(get_hl(c), fetch8(c), c); break;		// ld hl,n8
 		case 0xea: mem_write(fetch16(c), c->a, c); break; 
 

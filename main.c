@@ -6,7 +6,7 @@ static void cpu_init(CPU* const c){
 	c->pc = 0x100;
 	c->is_running = 1;
 
-	FILE* pfile = fopen("test-roms/cpu_instrs/individual/05-op-rp.gb", "rb");
+	FILE* pfile = fopen("test-roms/cpu_instrs/individual/06-ld-r,r.gb", "rb");
 
 	if(pfile == NULL){
 		perror("error reading file");	

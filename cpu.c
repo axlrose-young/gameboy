@@ -430,6 +430,9 @@ void cpu_step(CPU* const c){
 		case 0x2d: c->l = dec(c->l, c); break;				// dec l
 		case 0x3d: c->a = dec(c->a, c); break;				// dec a
 
+		case 0x0b: dec_rp(&c->b, &c->c); break;				// dec bc
+		case 0x1b: dec_rp(&c->d, &c->e); break;				// dec de
+		case 0x2b: dec_rp(&c->h, &c->l); break;				// dec hl 
 		case 0x3b: c->sp--; break;					// dec sp
 
 		case 0x23: inc_rp(&c->h, &c->l); break;				// inc hl
@@ -441,6 +444,8 @@ void cpu_step(CPU* const c){
 
 		case 0xce: adc(fetch8(c), c); break;  				// adc a,u8
 
+		case 0x09: add16(get_bc(c), c); break;				// add hl,bc
+		case 0x19: add16(get_de(c), c); break;				// add hl,de
 		case 0x29: add16(get_hl(c), c); break;				// add hl,hl
 		case 0x39: add16(c->sp, c); break;				// add hl,sp
 
